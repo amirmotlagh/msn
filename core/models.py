@@ -17,6 +17,10 @@ class Profile(models.Model):
     def __str__(self):
         return self.user.username
 
+    class Meta:
+        verbose_name = 'پروفایل'
+        verbose_name_plural = 'پروفایل‌ها'
+
 
 class Post(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
