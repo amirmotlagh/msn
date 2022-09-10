@@ -47,3 +47,18 @@ class LikePost(models.Model):
         verbose_name = 'پسندیدن'
         verbose_name_plural = 'پسندیدن‌ها'
         unique_together = ['post', 'user']
+
+
+class Follow(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             verbose_name='کاربر')
+    follower = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                 verbose_name='دنبال‌کننده', related_name='follower')
+
+    def __str__(self):
+        return f'{self.follower} دنبال کننده {self.user}'
+
+    class Meta:
+        verbose_name = 'دنبال کننده'
+        verbose_name_plural = 'دنبال کنندگان'
+        unique_together = ['user', 'follower']

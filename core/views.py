@@ -1,3 +1,5 @@
+import random
+
 from django.contrib import messages, auth
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -6,15 +8,23 @@ from django.shortcuts import render, redirect
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
-from core.models import Profile, Post, LikePost
+from core.models import Profile, Post, LikePost, Follow
 
 
 @login_required(login_url='signin')
 def index(request):
     profile = Profile.objects.get(user=request.user)
-    posts = Post.objects.all().annotate(profile_pic=Subquery(Profile.objects.filter(
-        user_id=OuterRef('user_id')).values('profileimg')[:1]))
-    return render(request, 'index.html', {'profile': profile, 'posts': posts})
+    followings_user_id = Follow.objects.filter(
+        follower=request.user).values_list('user_id', flat=True).distinct()
+    posts = Post.objects.filter(user_id__in=followings_user_id).annotate(profile_pic=Subquery(
+        Profile.objects.filter(user_id=OuterRef('user_id')).values('profileimg')[:1]))
+
+    not_followings = Profile.objects.exclude(user_id__in=followings_user_id).exclude(
+        user=request.user)
+    suggestion_len = min(len(not_followings), 5)
+    suggestions = random.sample(list(not_followings), suggestion_len)
+    return render(request, 'index.html', {'profile': profile, 'posts': posts,
+                                          'suggestions': suggestions})
 
 
 class SignUpView(APIView):
@@ -75,6 +85,37 @@ class LogOutView(APIView):
     def get(self, request):
         auth.logout(request)
         return redirect('signin')
+
+    def permission_denied(self, request, message=None, code=None):
+        return redirect('signin')
+
+
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, username):
+        try:
+            profile = Profile.objects.get(user__username=username)
+            posts = Post.objects.filter(user__username=username)
+            follow = Follow.objects.filter(user__username=username, follower=request.user)
+            if follow:
+                follow_button = 'unfollow'
+            else:
+                follow_button = 'follow'
+
+            followers_count = Follow.objects.filter(user__username=username).count()
+            followings_count = Follow.objects.filter(follower__username=username).count()
+            context = {
+                'profile': profile,
+                'posts': posts,
+                'post_count': posts.count(),
+                'follow_button': follow_button,
+                'followers_count': followers_count,
+                'followings_count': followings_count
+            }
+            return render(request, 'profile.html', context)
+        except:
+            redirect('signin')
 
     def permission_denied(self, request, message=None, code=None):
         return redirect('signin')
@@ -151,3 +192,41 @@ class LikePostView(APIView):
     def permission_denied(self, request, message=None, code=None):
         auth.logout(request)
         return redirect('signin')
+
+
+class FollowView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def permission_denied(self, request, message=None, code=None):
+        auth.logout(request)
+        return redirect('signin')
+
+    def post(self, request):
+        follower = request.user
+        user_id = request.POST.get('request_to_follow_id')
+
+        user = User.objects.filter(id=user_id).first()
+
+        already_follow = Follow.objects.filter(user=user, follower=follower).first()
+        if already_follow:
+            already_follow.delete()
+        else:
+            Follow.objects.create(user=user, follower=follower)
+
+        return redirect('/profile/'+user.username)
+
+
+class SearchView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def permission_denied(self, request, message=None, code=None):
+        auth.logout(request)
+        return redirect('signin')
+
+    def post(self, request):
+        searched_username = request.POST.get('username')
+        profile = Profile.objects.get(user=request.user)
+
+        results = Profile.objects.filter(user__username__icontains=searched_username).distinct()
+
+        return render(request, 'search.html', {'profile': profile, 'results': results})
